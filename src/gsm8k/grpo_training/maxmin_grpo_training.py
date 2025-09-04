@@ -1,5 +1,6 @@
 import sys, os
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+FILE_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.abspath(os.path.join(FILE_DIR, "../../.."))
 sys.path.insert(0, ROOT)
 
 from torch import nn
@@ -10,27 +11,10 @@ from trl import GRPOConfig, GRPOTrainer
 from datasets import load_dataset
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from accelerate import Accelerator, PartialState
+from src.helper.gsm8k_utils import format_prompt
 
 from transformers.modeling_outputs import SequenceClassifierOutputWithPast
 import argparse
-
-FEW_SHOT_PREFIX = """These are examples of how to solve math problems step by step:
-
-    Q: If there are 3 apples and you eat one, how many are left?
-    A: Let's think step by step. There are 3 apples. You eat one. So 3 - 1 = 2.
-    #### The final answer is 2.
-
-    Q: Tom had 4 pencils. He gave 1 to Sarah and bought 3 more. How many does he have now?
-    A: Let's think step by step. He had 4 and gave away 1, so 4 - 1 = 3. Then he bought 3, so 3 + 3 = 6.
-    #### The final answer is 6.
-
-    The following is the only question you need to answer:
-    """
-
-def format_prompt(example: str) -> str:
-        return {
-            "formatted_prompts": FEW_SHOT_PREFIX + f"\nQ: {example['question']}. Let's think step by step and provide the final answer prefixed by ####.\nA: "
-        }
 
 class MaxMinRewardWrapper(nn.Module):
     def __init__(self, reward_model, fc_maj, fc_min):
@@ -62,7 +46,7 @@ class MaxMinRewardWrapper(nn.Module):
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train Pluralistic Reward Model with configurable parameters.")
-    parser.add_argument("--user_id", type=int, required=True, help="Hugging Face user ID.")
+    parser.add_argument("--user_id", type=str, required=True, help="Hugging Face user ID.")
     parser.add_argument("--seed", type=int, required=True, help="Random seed to use.")
     parser.add_argument("--proportion", required=True, type=float, help="Proportion of minority group.")
     return parser.parse_args()
@@ -85,6 +69,7 @@ if __name__ == "__main__":
     dataset = load_dataset(dataset_name, 'main')["train"]
     with accelerator.main_process_first():
         dataset = dataset.map(format_prompt)
+        dataset = dataset.rename_column("formatted_prompts", "prompt")
         dataset = dataset.remove_columns([col for col in dataset.column_names if col != "prompt"])
         dataset = dataset.train_test_split(test_size=0.05, seed=seed)
 

@@ -1,7 +1,7 @@
 import argparse
 import pandas as pd
 from accelerate import Accelerator
-from peft import LoraConfig, TaskType, PeftModelForSequenceClassification
+from peft import PeftConfig, TaskType, PeftModelForSequenceClassification, AutoPeftModelForSequenceClassification
 from datasets import load_dataset, Dataset
 from trl import RewardTrainer, RewardConfig
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
@@ -47,29 +47,15 @@ if __name__ == "__main__":
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     if tokenizer.pad_token is None: tokenizer.pad_token = tokenizer.eos_token
 
-    # Reward model
-    model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=1)
-    model.config.pad_token_id = tokenizer.pad_token_id
+    # Socratic Reward Model
+    peft_model_id = f"{user_id}/gpt2-gsm8k-lora-new"
+    config = PeftConfig.from_pretrained(peft_model_id)
+    reward_model = AutoPeftModelForSequenceClassification.from_pretrained(peft_model_id, num_labels=1)
 
-    accelerator.print("\n\n\n")
-    for name, param in model.named_parameters():
-        if param.requires_grad: accelerator.print(name)
-
-    # PEFT config
-    peft_config = LoraConfig(
-        task_type=TaskType.SEQ_CLS,
-        inference_mode=False,
-        r=8,
-        lora_alpha=32,
-        lora_dropout=0.1,
-        modules_to_save=["score"],
-    )
-
-    model = PeftModelForSequenceClassification(model, peft_config)
-    model.print_trainable_parameters()
-    accelerator.print("\n\n\n")
-    for name, param in model.named_parameters():
-        if param.requires_grad: accelerator.print(name)
+    # Reward Tokenizer
+    reward_tokenizer = AutoTokenizer.from_pretrained(config.base_model_name_or_path)
+    reward_tokenizer.pad_token = reward_tokenizer.eos_token
+    reward_model.config.pad_token_id = reward_tokenizer.pad_token_id
 
     # Dataset
     dataset_name = "openai/gsm8k"
@@ -94,26 +80,13 @@ if __name__ == "__main__":
 
     # Reward trainer
     trainer = RewardTrainer(
-        model=model,
+        model=reward_model,
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
         processing_class=tokenizer,
     )
 
-    trainer.train()
-
-    # Push to Hub
-    if accelerator.is_main_process:
-        print("Pushing model to hub...")
-        model.push_to_hub(
-            f"{user_id}/gpt2-gsm8k-lora-new",
-            private=True,
-            save_adapter=True,
-            save_peft_format=True,
-        )
-        # trainer.push_to_hub(
-        #     dataset_name=dataset_name
-        # )
+    trainer.evaluate()
 
 

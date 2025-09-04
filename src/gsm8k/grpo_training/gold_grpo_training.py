@@ -6,7 +6,7 @@ sys.path.insert(0, ROOT)
 import torch
 import argparse
 import numpy as np
-from peft import PeftConfig
+from peft import PeftConfig, AutoPeftModelForSequenceClassification
 from datasets import load_dataset
 from trl import GRPOConfig, GRPOTrainer
 from accelerate import Accelerator, PartialState
@@ -37,8 +37,6 @@ def prepare_reward_fn(reward_model, reward_tokenizer, user_id):
 
         state = PartialState()
 
-        state.print("\n\n", ground_truth)
-
         rewards = []
         for prompt, completion, gt in zip(prompts, completions, ground_truth):
             
@@ -50,17 +48,6 @@ def prepare_reward_fn(reward_model, reward_tokenizer, user_id):
             length = len(completion.split())
             length = (length - mean_len) / std_len if std_len > 0 else 0.0
             conciseness = 1-sigmoid(length)
-
-            state.print("\n\n")
-            state.print("-"*20)
-            state.print("PROMPT:\n")
-            state.print(prompt)
-
-            state.print("\n")
-            state.print("-"*20)
-            state.print("COMPLETION:\n")
-            state.print(completion)
-            state.print("\n Pred: ", preds)
 
             # Socratic score
             with torch.no_grad():
@@ -102,9 +89,9 @@ if __name__ == "__main__":
         dataset = dataset.train_test_split(test_size=0.05, seed=seed)
 
     # Socratic Reward Model
-    peft_model_id = f"{user_id}/gpt2-gsm8k-lora"
+    peft_model_id = f"{user_id}/gpt2-gsm8k-lora-new"
     config = PeftConfig.from_pretrained(peft_model_id)
-    reward_model = AutoModelForSequenceClassification.from_pretrained(peft_model_id, num_labels=1)
+    reward_model = AutoPeftModelForSequenceClassification.from_pretrained(peft_model_id, num_labels=1)
 
     # Reward Tokenizer
     reward_tokenizer = AutoTokenizer.from_pretrained(config.base_model_name_or_path)

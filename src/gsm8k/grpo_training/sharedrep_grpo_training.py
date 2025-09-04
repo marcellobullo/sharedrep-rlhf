@@ -10,26 +10,9 @@ from accelerate import Accelerator
 from transformers import AutoTokenizer
 from trl import GRPOConfig, GRPOTrainer
 from src.models.sr_gpt2.sr_gpt2_modeling import SharedRepGPT2RM
+from src.helper.gsm8k_utils import format_prompt
 
 import argparse
-
-FEW_SHOT_PREFIX = """These are examples of how to solve math problems step by step:
-
-    Q: If there are 3 apples and you eat one, how many are left?
-    A: Let's think step by step. There are 3 apples. You eat one. So 3 - 1 = 2.
-    #### The final answer is 2.
-
-    Q: Tom had 4 pencils. He gave 1 to Sarah and bought 3 more. How many does he have now?
-    A: Let's think step by step. He had 4 and gave away 1, so 4 - 1 = 3. Then he bought 3, so 3 + 3 = 6.
-    #### The final answer is 6.
-
-    The following is the only question you need to answer:
-    """
-
-def format_prompt(example: str) -> str:
-        return {
-            "formatted_prompts": FEW_SHOT_PREFIX + f"\nQ: {example['question']}. Let's think step by step and provide the final answer prefixed by ####.\nA: "
-        }
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train Pluralistic Reward Model with configurable parameters.")
@@ -59,6 +42,7 @@ if __name__ == "__main__":
     dataset = load_dataset(dataset_name, 'main')["train"]
     with accelerator.main_process_first():
         dataset = dataset.map(format_prompt)
+        dataset = dataset.rename_column("formatted_prompts", "prompt")
         dataset = dataset.remove_columns([col for col in dataset.column_names if col != "prompt"])
         dataset = dataset.train_test_split(test_size=0.05, seed=seed)
 
@@ -76,7 +60,7 @@ if __name__ == "__main__":
     # Policy Model
     policy_model_name = "Qwen/Qwen2.5-Math-1.5B"
     policy_hub_id = f"{user_id}/sharedrep-gsm8k-grpo-prop{proportion}-seed{seed}-k{k}"
-    policy_tokenizer = AutoTokenizer.from_pretrained(policy_model_name, , padding_side="left")
+    policy_tokenizer = AutoTokenizer.from_pretrained(policy_model_name, padding_side="left")
     policy_tokenizer.pad_token = policy_tokenizer.eos_token
 
     # Training Arguments
