@@ -9,21 +9,21 @@ from tqdm.auto import tqdm
 from accelerate import Accelerator
 from torch.utils.data import DataLoader
 from datasets import load_dataset, Dataset
+from src.helper.imdb_utils import pre_processing_imdb
 from transformers import AutoTokenizer, AutoModelForCausalLM
-from src.helper.gsm8k_utils import format_prompt
 
-def tokenize(example, tokenizer, max_new_tokens=256):  
-        return tokenizer(
-            example["formatted_prompts"],
-            return_tensors="pt",
-            padding="max_length",
-            truncation=True,
-            max_length= 2048 - max_new_tokens - 1,
-            padding_side="left"
-        )
+def tokenize(examples, tokenizer):
+    return tokenizer(
+        examples["query"],
+        padding="max_length",
+        max_length=8,
+        truncation=True,
+        padding_side="left",
+        return_tensors="pt"
+    )
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Evaluating SharedRep-RLHF...")
+    parser = argparse.ArgumentParser(description="Evaluating RLHF methods...")
     parser.add_argument("--user_id", type=str, required=True, help="Hugging Face user ID.")
     parser.add_argument("--seed", type=int, required=True)
     parser.add_argument("--proportion", type=float, required=True)
@@ -44,19 +44,25 @@ if __name__ == "__main__":
     user_id = args.user_id
     proportion = args.proportion
 
+    # Parameters
+    batch_size = 128
+    max_new_tokens = 100
+    dataset_name = "stanfordnlp/imdb"
+    model_name = "lvwerra/gpt2-imdb"
+    min_review_length = 200
+    input_min_text_length = 2
+    input_max_text_length = 8
+
     # Dataset
-    batch_size = 32
-    num_responses = 1
-    max_new_tokens = 256
-    dataset = load_dataset("openai/gsm8k", "main")["test"]
+    dataset = load_dataset(dataset_name, split="train")
 
     # Policy Model
     if method=="gold":
-        policy_model_id = f"{user_id}/{method}-gsm8k-grpo-seed{seed}"
+        policy_model_id = f"{user_id}/{method}-gsm8k-ppo-seed{seed}"
     elif method == "maxmin":
-        policy_model_id = f"{user_id}/{method}-gsm8k-grpo-prop{proportion}-seed{seed}"
+        policy_model_id = f"{user_id}/{method}-gsm8k-ppo-prop{proportion}-seed{seed}"
     elif method == "sharedrep":
-        policy_model_id = f"{user_id}/{method}-gsm8k-grpo-prop{proportion}-seed{seed}-k{k}"
+        policy_model_id = f"{user_id}/{method}-gsm8k-ppo-prop{proportion}-seed{seed}-k{k}"
     policy_model = AutoModelForCausalLM.from_pretrained(policy_model_id)
     policy_model.eval()
     
@@ -67,19 +73,22 @@ if __name__ == "__main__":
 
     # Prepare dataset
     with accelerator.main_process_first():
-        dataset = dataset.map(format_prompt, num_proc=32, desc="Formatting prompts")
-        dataset = dataset.map(lambda x: tokenize(x, policy_tokenizer, max_new_tokens), desc="Tokenizing", num_proc=32)
+        
+        dataset = pre_processing_imdb(
+            dataset,
+            model_name=model_name,
+            min_review_length=min_review_length,
+            input_min_text_length=input_min_text_length,
+            input_max_text_length=input_max_text_length
+        )
+
         generation_dataset = {
             "completion": [],
-            "prompt": dataset["question"],
-            "answer": dataset["answer"]
+            "prompt": dataset["query"]
         }
-        dataset.set_format(type="torch")
-
-        columns_to_keep = ["input_ids", "attention_mask"]
-        columns_to_remove = [col for col in dataset.column_names if col not in columns_to_keep]
-        dataset = dataset.remove_columns(columns_to_remove)
-
+        dataset = dataset.map(lambda x: tokenize(x, policy_tokenizer), batched=True, batch_size=batch_size, num_proc=32, desc="Tokenizing")
+        dataset.set_format(type="torch", columns=["input_ids", "attention_mask"])
+    
     # Dataloader
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
 
@@ -107,7 +116,7 @@ if __name__ == "__main__":
         elif method == "maxmin":
             dataset_hub_id = f"{user_id}/{method}-gsm8k-grpo-eval-prop{proportion}-seed{seed}"
         elif method == "sharedrep":
-            dataset_hub_id = f"{user_id}/{method}-gsm8k-grpo-eval-prop{proportion}-seed{seed}-k{k}"
+            dataset_hub_id = f"{user_id}/{method}-imdb-grpo-eval-prop{proportion}-seed{seed}-k{k}"
         Dataset.from_dict(generation_dataset).push_to_hub(
             dataset_hub_id,
             private=True

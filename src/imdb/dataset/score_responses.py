@@ -28,7 +28,7 @@ if __name__ == "__main__":
     user_id = args.user_id
 
     # Dataset
-    batch_size = 16
+    batch_size = 32
     num_responses = 2
     dataset_name = f"{user_id}/gpt2-imdb-raw"
     dataset = load_dataset(dataset_name, split="train")
@@ -39,9 +39,8 @@ if __name__ == "__main__":
     pos_id = reward_model.config.label2id["POSITIVE"]
     reward_model.eval()
 
+    # Reward Tokenizer
     reward_tokenizer = AutoTokenizer.from_pretrained(reward_model_name)
-    #reward_tokenizer.add_special_tokens({'pad_token': '[PAD]'})
-    #reward_tokenizer.pad_token = reward_tokenizer.eos_token
     reward_model.config.pad_token_id = reward_tokenizer.pad_token_id
 
     def tokenize(example, num_responses=2):
