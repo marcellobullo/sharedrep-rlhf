@@ -3,16 +3,79 @@ FILE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(FILE_DIR, "../../.."))
 sys.path.insert(0, ROOT)
 
+
 import argparse
+import importlib
 from trl import PPOConfig, PPOTrainer
 from datasets import load_dataset
 from accelerate import Accelerator
 from src.helper.imdb_utils import SharedRepPPOTrainer
 from src.models.sr_gpt2.sr_gpt2_modeling import SharedRepGPT2RM
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModelForSequenceClassification
-
-
 import argparse
+
+
+import torch
+from trl.trainer.utils import first_true_indices
+def get_sharedrep_reward(
+    model: torch.nn.Module, query_responses: torch.Tensor, pad_token_id: int, context_length: int
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    Computes the reward logits and the rewards for a given model and query responses.
+
+    Args:
+        model (`torch.nn.Module`):
+            The model used to compute the reward logits.
+        query_responses (`torch.Tensor`):
+            The tensor containing the query responses.
+        pad_token_id (`int`):
+            The token ID representing the pad token.
+        context_length (`int`):
+            The length of the context in the query responses.
+
+    Returns:
+        tuple:
+            - `reward_logits` (`torch.Tensor`):
+                The logits for the reward model.
+            - `final_rewards` (`torch.Tensor`):
+                The final rewards for each query response.
+            - `sequence_lengths` (`torch.Tensor`):
+                The lengths of the sequences in the query responses.
+    """
+    assert model.maxmin, "The model cannot be in maxmin mode"
+    pos_id = model.config.label2id["POSITIVE"]
+    
+    attention_mask = query_responses != pad_token_id
+    position_ids = attention_mask.cumsum(1) - attention_mask.long()  # exclusive cumsum
+    input_ids = torch.masked_fill(query_responses, ~attention_mask, 0)
+
+    # Sentiment score
+    sentiment_scores = model(
+        input_ids=input_ids,
+        attention_mask=attention_mask,
+        position_ids=position_ids,
+        return_dict=True,
+        output_hidden_states=True,
+        use_cache=False,  # otherwise mistral-based RM would error out
+    )
+    probs = torch.softmax(sentiment_scores.logits, dim=-1)
+    positiveness = probs[:, pos_id]
+
+    # Conciseness
+    sequence_lengths = first_true_indices(query_responses[:, context_length:] == pad_token_id) - 1 + context_length
+    conciseness = 1-(sequence_lengths/100)
+    
+    # Compute both group scores
+    group_score_majority = conciseness
+    group_score_minority = 0.3 * conciseness+ 0.7 * positiveness
+
+    rewards = torch.min(group_score_majority, group_score_minority)
+    return (
+        rewards,
+        rewards.squeeze(-1),
+        sequence_lengths,
+    )
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train Pluralistic Reward Model with configurable parameters.")
@@ -95,6 +158,9 @@ if __name__ == "__main__":
         kl_coef=0.05
 
     )
+
+    m = importlib.import_module(PPOTrainer.__module__)  
+    m.get_reward = get_sharedrep_reward
 
     # Train
     trainer = PPOTrainer(
