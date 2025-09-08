@@ -100,7 +100,7 @@ if __name__ == "__main__":
     # Dataset
     batch_size = 16
     dataset_name = f"stanfordnlp/imdb"
-    dataset = load_dataset(dataset_name, split="test")
+    dataset = load_dataset(dataset_name, split="train")
 
 
     # Reward Model

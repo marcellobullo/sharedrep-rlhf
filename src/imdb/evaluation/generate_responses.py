@@ -54,21 +54,22 @@ if __name__ == "__main__":
     input_max_text_length = 8
 
     # Dataset
-    dataset = load_dataset(dataset_name, split="train")
+    dataset = load_dataset(dataset_name, split="test")
 
     # Policy Model
     if method=="gold":
-        policy_model_id = f"{user_id}/{method}-gsm8k-ppo-seed{seed}"
+        policy_model_id = f"{user_id}/{method}-imdb-ppo-seed{seed}"
     elif method == "maxmin":
-        policy_model_id = f"{user_id}/{method}-gsm8k-ppo-prop{proportion}-seed{seed}"
+        policy_model_id = f"{user_id}/{method}-imdb-ppo-prop{proportion}-seed{seed}"
     elif method == "sharedrep":
-        policy_model_id = f"{user_id}/{method}-gsm8k-ppo-prop{proportion}-seed{seed}-k{k}"
+        policy_model_id = f"{user_id}/{method}-imdb-ppo-prop{proportion}-seed{seed}-k{k}"
     policy_model = AutoModelForCausalLM.from_pretrained(policy_model_id)
     policy_model.eval()
     
     # Tokenizer
     policy_tokenizer = AutoTokenizer.from_pretrained(policy_model_id, padding_side="left")
     policy_tokenizer.pad_token = policy_tokenizer.eos_token
+    policy_model.config.pad_token_id = policy_tokenizer.pad_token_id
     policy_model.config.pad_token_id = policy_tokenizer.pad_token_id
 
     # Prepare dataset
@@ -101,9 +102,13 @@ if __name__ == "__main__":
             outputs = accelerator.unwrap_model(policy_model).generate(
                 input_ids=batch["input_ids"].squeeze(),
                 attention_mask=batch["attention_mask"].squeeze(),
-                max_new_tokens=max_new_tokens,
+                max_length=max_new_tokens,
                 do_sample=True,
-                pad_token_id=policy_tokenizer.pad_token_id,
+                top_k=0,
+                temperature=0.7,
+                top_p=0.95,
+                eos_token_id=policy_model.config.eos_token_id,
+                pad_token_id=policy_model.pad_token_id,
             )
             completions = policy_tokenizer.batch_decode(outputs, skip_special_tokens=True)
             all_completions = accelerator.gather_for_metrics(completions)
@@ -112,11 +117,11 @@ if __name__ == "__main__":
     if accelerator.is_main_process:
         print("Pushing evaluation dataset to the hub...")
         if method=="gold":
-            dataset_hub_id = f"{user_id}/{method}-gsm8k-grpo-eval-seed{seed}"
+            dataset_hub_id = f"{user_id}/{method}-imdb-ppo-eval-seed{seed}"
         elif method == "maxmin":
-            dataset_hub_id = f"{user_id}/{method}-gsm8k-grpo-eval-prop{proportion}-seed{seed}"
+            dataset_hub_id = f"{user_id}/{method}-imdb-ppo-eval-prop{proportion}-seed{seed}"
         elif method == "sharedrep":
-            dataset_hub_id = f"{user_id}/{method}-imdb-grpo-eval-prop{proportion}-seed{seed}-k{k}"
+            dataset_hub_id = f"{user_id}/{method}-imdb-ppo-eval-prop{proportion}-seed{seed}-k{k}"
         Dataset.from_dict(generation_dataset).push_to_hub(
             dataset_hub_id,
             private=True

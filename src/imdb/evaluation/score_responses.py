@@ -6,7 +6,6 @@ sys.path.insert(0, ROOT)
 import torch
 import argparse
 from tqdm import tqdm
-from peft import PeftConfig
 from datasets import load_dataset
 from accelerate import Accelerator
 from torch.utils.data import DataLoader
@@ -38,11 +37,11 @@ if __name__ == "__main__":
     # Dataset
     batch_size = 32
     if method=="gold":
-        dataset_name = f"{user_id}/{method}-imdb-grpo-eval-seed{seed}"
+        dataset_name = f"{user_id}/{method}-imdb-ppo-eval-seed{seed}"
     elif method == "maxmin":
-        dataset_name = f"{user_id}/{method}-imdb-grpo-eval-prop{proportion}-seed{seed}"
+        dataset_name = f"{user_id}/{method}-imdb-ppo-eval-prop{proportion}-seed{seed}"
     elif method == "sharedrep":
-        dataset_name = f"{user_id}/{method}-imdb-grpo-eval-prop{proportion}-seed{seed}-k{k}"
+        dataset_name = f"{user_id}/{method}-imdb-ppo-eval-prop{proportion}-seed{seed}-k{k}"
     dataset = load_dataset(dataset_name)
 
     # Positiveness Model
@@ -64,15 +63,16 @@ if __name__ == "__main__":
         )
 
     with accelerator.main_process_first():
+
+        # Tokenization
+        accelerator.print("Tokenizing dataset...")
+        dataset = dataset.map(tokenize, desc="Tokenizing", num_proc=32)
         
         # Scoring
         accelerator.print("Scoring...")
         dataset = dataset.map(lambda x: compute_length_score(x, num_responses=1), num_proc=32, desc="Computing length scores")
         dataset = dataset.map(lambda x: compute_normalized_length_score(x, num_responses=1), num_proc=32, desc="Computing normalized length scores")
-
-        # Tokenization
-        accelerator.print("Tokenizing dataset...")
-        dataset = dataset.map(tokenize, desc="Tokenizing", num_proc=32)
+        
         dataset.set_format(type="torch")
 
     # Dataloader
