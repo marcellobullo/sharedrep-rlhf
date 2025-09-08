@@ -3,22 +3,19 @@ FILE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(FILE_DIR, "../../.."))
 sys.path.insert(0, ROOT)
 
-
+import torch
 import argparse
 import importlib
 from datasets import load_dataset
 from accelerate import Accelerator
 from trl import PPOConfig, PPOTrainer
 from trl.trainer.utils import get_reward
-from src.helper.imdb_utils import SharedRepPPOTrainer
+from trl.trainer.utils import first_true_indices
 from src.models.sr_gpt2.sr_gpt2_modeling import SharedRepGPT2RM
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModelForSequenceClassification
 from src.helper.imdb_utils import pre_processing_imdb
 
 
-
-import torch
-from trl.trainer.utils import first_true_indices
 
 def get_sharedrep_reward( model: torch.nn.Module, query_responses: torch.Tensor, pad_token_id: int, context_length: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
@@ -43,10 +40,7 @@ def get_sharedrep_reward( model: torch.nn.Module, query_responses: torch.Tensor,
             - `sequence_lengths` (`torch.Tensor`):
                 The lengths of the sequences in the query responses.
     """
-    if not isinstance(model, SharedRepGPT2RM):
-        return get_reward(model, query_responses, pad_token_id, context_length)
-    
-    elif isinstance(model, SharedRepGPT2RM):
+    if isinstance(model, SharedRepGPT2RM):
         assert model.maxmin, "The model must be in maxmin mode"
 
         attention_mask = query_responses != pad_token_id
@@ -54,11 +48,12 @@ def get_sharedrep_reward( model: torch.nn.Module, query_responses: torch.Tensor,
         input_ids = torch.masked_fill(query_responses, ~attention_mask, 0)
 
         # Compute rewards
-        rewards = model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-        )
+        with torch.no_grad():
+            rewards = model(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+            )
     
         sequence_lengths = first_true_indices(query_responses[:, context_length:] == pad_token_id) - 1 + context_length
         
@@ -67,6 +62,8 @@ def get_sharedrep_reward( model: torch.nn.Module, query_responses: torch.Tensor,
             rewards.logits.squeeze(-1),
             sequence_lengths,
         )
+    else:
+        return get_reward(model, query_responses, pad_token_id, context_length)
 
 def tokenize(examples, tokenizer):
     return tokenizer(

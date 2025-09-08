@@ -51,7 +51,7 @@ def prepare_reward_fn(reward_model, reward_tokenizer, user_id):
 
             # Socratic score
             with torch.no_grad():
-                inputs = reward_tokenizer(" "+completion, return_tensors="pt", padding=True, truncation=True).to(reward_model.device)
+                inputs = reward_tokenizer(prompt+completion, return_tensors="pt", padding=True, truncation=True).to(reward_model.device)
                 score = reward_model(**inputs).logits[0].item()
             score = (score - mean_socratic) / std_socratic if std_socratic > 0 else 0.0
             socratic_score = sigmoid(score)
