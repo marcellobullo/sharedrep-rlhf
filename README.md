@@ -34,7 +34,7 @@ Given an input prompt $\boldsymbol{x}$ and an LLM policy $\pi(\cdot|\boldsymbol{
 **Our empirical study is guided by two central questions:**
 1. Does SharedRep-RLHF improve *group fairness* over MaxMin-RLHF for tasks with low minority representation, as measured by the average minority score?
 
-2. Does SharedRep-RLHF achieve a higher *win rate+ on these tasks under the same conditions?
+2. Does SharedRep-RLHF achieve a higher *win rate* on these tasks under the same conditions?
 
 ### Experiment Tasks
 - [Controlled Sentiment Analysis](src/imdb/README.md)
