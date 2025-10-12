@@ -25,16 +25,16 @@ class LengthSampler:
 
 def compute_length_score(example, num_responses, key="response"):
     if num_responses==1:
-        return {"length": np.sum(example["attention_mask"], axis=-1).squeeze().tolist()}
+        return {"length": example["attention_mask"].sum(dim=-1).squeeze().tolist()}
     return {
-        f"length_{i}": np.sum(example[f"attention_mask_{i}"], axis=-1).squeeze().tolist() for i in range(num_responses)
+        f"length_{i}": example[f"attention_mask_{i}"].sum(dim=-1).squeeze().tolist() for i in range(num_responses)
     }
 
 def compute_normalized_length_score(example, num_responses, key="response"):
     if num_responses==1:
-        return {"normalized_length": (np.sum(example["attention_mask"], axis=-1).squeeze()/100).tolist()}
+        return {"normalized_length": (example["attention_mask"].sum(dim=-1).squeeze()/100).tolist()}
     return {
-        f"normalized_length_{i}": (np.sum(example[f"attention_mask_{i}"], axis=-1).squeeze()/100).tolist() for i in range(num_responses)
+        f"normalized_length_{i}": (example[f"attention_mask_{i}"].sum(dim=-1).squeeze()/100).tolist() for i in range(num_responses)
     }
 
 def sample_fragment(

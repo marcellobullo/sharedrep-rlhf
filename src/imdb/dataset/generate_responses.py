@@ -24,7 +24,7 @@ def tokenize(examples, tokenizer):
     )
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Generate IMDb responses using bert-base-uncased model.")
+    parser = argparse.ArgumentParser(description="Generate IMDb responses using gpt2-imdb model.")
     parser.add_argument("--user_id", type=str, required=True, help="Hugging Face user ID.")
     return parser.parse_args()
 
@@ -50,7 +50,8 @@ if __name__ == "__main__":
     input_max_text_length = 8
 
     # Dataset
-    dataset = load_dataset(dataset_name, split="train")
+    #dataset = load_dataset(dataset_name, split="train")
+    dataset = load_dataset(dataset_name)
 
     # Model
     model = AutoModelForCausalLM.from_pretrained(model_name)
@@ -59,6 +60,8 @@ if __name__ == "__main__":
     tokenizer = AutoTokenizer.from_pretrained(model_name, padding_side="left")
     tokenizer.pad_token = tokenizer.eos_token
     model.pad_token_id = tokenizer.pad_token_id
+    eos_token_id = model.config.eos_token_id
+    pad_token_id = model.pad_token_id
 
     # Prepare dataset
     with accelerator.main_process_first():
@@ -96,8 +99,8 @@ if __name__ == "__main__":
                     top_k=0,
                     temperature=0.7,
                     top_p=0.95,
-                    eos_token_id=model.config.eos_token_id,
-                    pad_token_id=model.pad_token_id,
+                    eos_token_id=eos_token_id,
+                    pad_token_id=pad_token_id,
                 )
                 completions = tokenizer.batch_decode(outputs, skip_special_tokens=True)
                 all_completions = accelerator.gather_for_metrics(completions)
