@@ -107,7 +107,6 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Train Pluralistic Reward Model with configurable parameters.")
     parser.add_argument("--user_id", type=str, required=True, help="Hugging Face user ID.")
     parser.add_argument("--seed", type=int, required=True, help="Random seed to use.")
-    parser.add_argument("--proportion", required=True, type=float, help="Proportion of minority group.")
     return parser.parse_args()
 
 
@@ -119,7 +118,6 @@ if __name__ == "__main__":
     args = parse_args()
     user_id = args.user_id
     seed = args.seed
-    proportion = args.proportion
 
     # Dataset
     batch_size = 16
@@ -127,20 +125,20 @@ if __name__ == "__main__":
     dataset = load_dataset(dataset_name, split="train")
 
     # Reward Model Majority
-    reward_model_name_majority = f"{user_id}/maxmin-imdb-reward-prop{proportion}-seed{seed}-majority"
-    reward_model_majority = AutoModelForSequenceClassification.from_pretrained(reward_model_name_majority)
+    reward_model_name_0 = f"{user_id}/maxmin-imdb-reward-clustering-seed{seed}-group0"
+    reward_model_majority = AutoModelForSequenceClassification.from_pretrained(reward_model_name_0)
     reward_model_majority.eval()
     fc_maj = reward_model_majority.score
     del reward_model_majority
     
     # Reward Model Minority
-    reward_model_name_minority = f"{user_id}/maxmin-imdb-reward-prop{proportion}-seed{seed}-minority"
-    reward_model = AutoModelForSequenceClassification.from_pretrained(reward_model_name_minority)
+    reward_model_name_1 = f"{user_id}/maxmin-imdb-reward-clustering-seed{seed}-group1"
+    reward_model = AutoModelForSequenceClassification.from_pretrained(reward_model_name_1)
     reward_model.eval()
     fc_min = reward_model.score
     
     # Reward Tokenizer
-    reward_tokenizer = AutoTokenizer.from_pretrained(reward_model_name_majority)
+    reward_tokenizer = AutoTokenizer.from_pretrained(reward_model_name_0)
     reward_tokenizer.pad_token = reward_tokenizer.eos_token
     reward_model.config.pad_token_id = reward_tokenizer.pad_token_id
 
@@ -157,7 +155,7 @@ if __name__ == "__main__":
 
     # Policy Model
     policy_model_name = "lvwerra/gpt2-imdb"
-    policy_hub_id = f"{user_id}/maxmin-imdb-ppo-prop{proportion}-seed{seed}"
+    policy_hub_id = f"{user_id}/maxmin-imdb-ppo-clustering-seed{seed}"
     policy_tokenizer = AutoTokenizer.from_pretrained(policy_model_name, padding_side="left")
     policy_tokenizer.pad_token = policy_tokenizer.eos_token
 

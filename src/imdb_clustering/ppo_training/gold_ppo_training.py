@@ -6,13 +6,41 @@ sys.path.insert(0, ROOT)
 import torch
 import argparse
 import importlib
+from typing import Optional
 from datasets import load_dataset
 from accelerate import Accelerator
 from trl import PPOConfig, PPOTrainer
 from src.helper.imdb_utils import pre_processing_imdb
 from trl.trainer.utils import get_reward, first_true_indices
-from transformers import AutoTokenizer, AutoModelForSequenceClassification, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForSequenceClassification, AutoModelForCausalLM, Trainer
 
+def save_model(self, output_dir: Optional[str] = None, _internal_call: bool = False):
+    backup_model = self.model
+    # self.accelerator.print(type(self.model))
+    # self.model = self.accelerator.unwrap_model(self.model)
+    # self.accelerator.print(type(self.model))
+
+    self.model = self.accelerator.unwrap_model(self.model)
+
+    # # save only the policy
+    # if isinstance(self.model, torch.nn.parallel.DistributedDataParallel):
+    #     self.model = self.model.module.policy
+    # else:
+    #     self.model = self.model.policy
+    #self.model = self.model.policy  
+
+    if self.is_deepspeed_enabled:
+        backup_deepspeed = self.deepspeed
+        self.deepspeed = self.model
+
+    #super().save_model(output_dir, _internal_call)
+    PPOTrainer.save_model(self, output_dir, _internal_call)
+
+
+    self.model = backup_model
+
+    if self.is_deepspeed_enabled:
+        self.deepspeed = backup_deepspeed
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train GOLD REWARD model with configurable parameters.")
@@ -104,8 +132,6 @@ def prepare_get_gold_reward(policy_tokenizer, reward_tokenizer, max_length=100):
                 sequence_lengths,
             )
     return compute_gold_reward
-
-
 
 def tokenize(examples, tokenizer):
     return tokenizer(
@@ -215,6 +241,10 @@ if __name__ == "__main__":
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
     )
+    import types
+    trainer.save_model = types.MethodType(save_model, trainer)
+    
+    trainer.push_to_hub(dataset_name=dataset_name)
     trainer.train()
 
     # Save the model

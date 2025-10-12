@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# -------- Config you can tweak --------
-CONFIG="/home/mb1921/paper_repo/sharedrep-rlhf/accelerate_config.yaml"
-SCRIPT="/home/mb1921/paper_repo/sharedrep-rlhf/src/imdb_clustering/reward_training/sharedrep_reward_training.py"
+# Get the directory where this bash script lives
+SCRIPT_DIR="$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+PROJECT_DIR="$(realpath "$SCRIPT_DIR/../../..")"
+
+# Config and script paths
+CONFIG="$PROJECT_DIR/accelerate_config.yaml"
+SCRIPT="$PROJECT_DIR/src/imdb_clustering/reward_training/sharedrep_reward_training.py"
 
 USER_ID="marcellobullo"
-#SEED=42
 EM_ITERS=10
 NUM_USERS=30
 
-# If you call the script with no args, these are the default k's:
 K_VALUES=(2 4 8 16 32)
 SEEDS=(42 14 28 73 100 2025 7 1234 5678 91011)
 
