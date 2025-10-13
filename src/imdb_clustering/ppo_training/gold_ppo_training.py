@@ -2,6 +2,7 @@ import sys, os
 FILE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(FILE_DIR, "../../.."))
 sys.path.insert(0, ROOT)
+os.environ["HF_HOME"] = "/hdd/mb1921/"
 
 import torch
 import argparse
@@ -13,34 +14,6 @@ from trl import PPOConfig, PPOTrainer
 from src.helper.imdb_utils import pre_processing_imdb
 from trl.trainer.utils import get_reward, first_true_indices
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, AutoModelForCausalLM, Trainer
-
-def save_model(self, output_dir: Optional[str] = None, _internal_call: bool = False):
-    backup_model = self.model
-    # self.accelerator.print(type(self.model))
-    # self.model = self.accelerator.unwrap_model(self.model)
-    # self.accelerator.print(type(self.model))
-
-    self.model = self.accelerator.unwrap_model(self.model)
-
-    # # save only the policy
-    # if isinstance(self.model, torch.nn.parallel.DistributedDataParallel):
-    #     self.model = self.model.module.policy
-    # else:
-    #     self.model = self.model.policy
-    #self.model = self.model.policy  
-
-    if self.is_deepspeed_enabled:
-        backup_deepspeed = self.deepspeed
-        self.deepspeed = self.model
-
-    #super().save_model(output_dir, _internal_call)
-    PPOTrainer.save_model(self, output_dir, _internal_call)
-
-
-    self.model = backup_model
-
-    if self.is_deepspeed_enabled:
-        self.deepspeed = backup_deepspeed
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train GOLD REWARD model with configurable parameters.")
@@ -153,7 +126,7 @@ if __name__ == "__main__":
     seed = args.seed
 
     # Dataset
-    batch_size = 16
+    batch_size = 128
     dataset_name = f"stanfordnlp/imdb"
     dataset = load_dataset(dataset_name, split="train")
 
@@ -207,7 +180,7 @@ if __name__ == "__main__":
         logging_steps=10,
         num_train_epochs=5,
         num_ppo_epochs=3,
-        per_device_train_batch_size=64,
+        per_device_train_batch_size=batch_size,
         gradient_accumulation_steps=1,
         bf16=True,
         learning_rate= 3e-06,
@@ -241,12 +214,9 @@ if __name__ == "__main__":
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
     )
-    import types
-    trainer.save_model = types.MethodType(save_model, trainer)
-    
-    trainer.push_to_hub(dataset_name=dataset_name)
     trainer.train()
 
     # Save the model
+    trainer.model = trainer.accelerator.unwrap_model(trainer.model)
     trainer.push_to_hub(dataset_name=dataset_name)
 

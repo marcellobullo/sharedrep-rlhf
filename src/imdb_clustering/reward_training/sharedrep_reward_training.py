@@ -21,12 +21,13 @@ def parse_args():
     parser.add_argument("--user_id", type=str, required=True, help="Hugging Face user ID.")
     parser.add_argument("--seed", type=int, required=True, help="Random seed to use.")
     parser.add_argument("--k", type=int, required=True, help="Inner hidden dimension size.")
+    parser.add_argument("--minprop", type=float, required=True, help="Proportion of minority group.")
     parser.add_argument("--em_iters", type=int, default=10, help="Number of EM iterations.")
     parser.add_argument("--num_users", type=int, default=30, help="Number of synthetic users.")
     return parser.parse_args()
 
 # Partition the dataset into 'num_users' synthetic users using round robin
-def partition_data_round_robin(dataset, num_users: int, seed: int):
+def partition_data_round_robin(dataset, minority_proportion, num_users: int, seed: int):
     random.seed(seed)
     indices = list(range(len(dataset)))
     random.shuffle(indices)  # Shuffle to avoid ordering bias
@@ -40,7 +41,26 @@ def partition_data_round_robin(dataset, num_users: int, seed: int):
         for i in data_indices:
             user_ids[i] = user_id
 
-    return dataset.add_column("user_id", user_ids)
+    num_group_0 = int(num_users * minority_proportion)
+    all_user_ids = list(range(num_users))
+    random.shuffle(all_user_ids)  # Shuffle to randomize group assignment
+
+    group_0_users = set(all_user_ids[:num_group_0])
+    group_1_users = set(all_user_ids[num_group_0:])
+
+    user_to_group = {
+        user_id: "group_0" if user_id in group_0_users else "group_1"
+        for user_id in all_user_ids
+    }
+
+    # Assign each example to its user's group
+    groups = [user_to_group[uid] for uid in user_ids]
+
+    # Add columns to the dataset
+    dataset = dataset.add_column("user_id", user_ids)
+    dataset = dataset.add_column("group", groups)
+
+    return dataset
 
 def score_dataset(dataset, model, batch_size):
 
@@ -99,7 +119,7 @@ def assign_group_ids_fast(dataset, model, num_users):
 
     # Build tensors
     user_ids = torch.as_tensor(dataset["user_id"], dtype=torch.long)            # [N]
-    N = user_ids.numel()
+    N = user_ids.numel() # number of samples
 
     # Stack scores per group -> shapes [N, G]
     s0 = torch.stack(
@@ -121,9 +141,9 @@ def assign_group_ids_fast(dataset, model, num_users):
     per_user_loglik.index_add_(0, user_ids, log_w)              # scatter-add rows by user_id
 
     # Handle users with no rows: keep -1
-    counts = torch.bincount(user_ids, minlength=num_users)      # [U]
+    counts = torch.bincount(user_ids, minlength=num_users)      # [U]: for each group, how many samples for each user. It always has size num_users
     group_ids_per_user = per_user_loglik.argmax(dim=1)          # [U]
-    group_ids_per_user[counts == 0] = -1
+    group_ids_per_user[counts == 0] = -1 # assign to majority if you don't have any samples
 
     # Assign per-sample group id via gather
     group_id_per_sample = group_ids_per_user[user_ids]          # [N]
@@ -173,11 +193,11 @@ def assign_group_ids(dataset, model, num_users):
 
 def compute_gold_scores(example):
 
-    if example["group_id"] == 0:
+    if example["group"] == "group_0":
         score0 = example["positiveness_0"]
         score1 = example["positiveness_1"]
 
-    if example["group_id"] == 1:
+    if example["group"] == "group_1":
         score0 = (1-example["normalized_length_0"])
         score1 = (1-example["normalized_length_1"])
 
@@ -192,7 +212,6 @@ def create_chosen_rejected(example):
 
 def clustering(dataset, model, batch_size, num_users):
     dataset = score_dataset(dataset, model, batch_size)
-    #dataset = assign_group_ids(dataset, model, num_users)
     dataset = assign_group_ids_fast(dataset, model, num_users)
     dataset = dataset.map(compute_gold_scores, num_proc=32, desc="Computing gold scores")
     dataset = dataset.map(create_chosen_rejected, num_proc=32, desc="Creating chosen and rejected responses")
@@ -230,6 +249,7 @@ if __name__ == "__main__":
     user_id = args.user_id
     seed = args.seed
     k = args.k
+    minority_proportion = args.minprop
     em_iters = args.em_iters                  
     num_users = args.num_users
     batch_size = 256
@@ -240,7 +260,7 @@ if __name__ == "__main__":
     num_responses = 2
     freeze_backbone = True
     model_name = "lvwerra/gpt2-imdb"
-    model_hub_id = f"{user_id}/sharedrep-imdb-reward-clustering-seed{seed}-k{k}"
+    model_hub_id = f"{user_id}/sharedrep-imdb-reward-clustering-prop{minority_proportion}-seed{seed}-k{k}"
 
     # Tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -274,7 +294,7 @@ if __name__ == "__main__":
     with accelerator.main_process_first():
         # Dataset Processing
         dataset = load_dataset(dataset_name, split="train")
-        dataset = partition_data_round_robin(dataset, num_users=num_users, seed=seed)
+        dataset = partition_data_round_robin(dataset, minority_proportion=minority_proportion, num_users=num_users, seed=seed)
         dataset = dataset.map(lambda x: tokenize(x, num_responses=num_responses), desc="Tokenizing", num_proc=32)
         dataset.set_format(type="torch")
 
@@ -286,7 +306,7 @@ if __name__ == "__main__":
         return_tensors="pt",
     )
     training_args = RewardConfig(
-        output_dir=f"/hdd/mb1921/imdb_clustering/sharedrep-imdb-reward-clustering-seed{seed}-k{k}",
+        output_dir=f"/hdd/mb1921/imdb_clustering/sharedrep-imdb-reward-clustering-prop{minority_proportion}-seed{seed}-k{k}",
         per_device_train_batch_size=64,
         learning_rate=5e-4,
         num_train_epochs=2,

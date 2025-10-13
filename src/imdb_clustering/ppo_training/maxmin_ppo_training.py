@@ -2,6 +2,7 @@ import sys, os
 FILE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(FILE_DIR, "../../.."))
 sys.path.insert(0, ROOT)
+os.environ["HF_HOME"] = "/hdd/mb1921/"
 
 import torch
 import argparse
@@ -107,6 +108,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Train Pluralistic Reward Model with configurable parameters.")
     parser.add_argument("--user_id", type=str, required=True, help="Hugging Face user ID.")
     parser.add_argument("--seed", type=int, required=True, help="Random seed to use.")
+    parser.add_argument("--minprop", type=float, required=True, help="Minority proportion for clustering.")
     return parser.parse_args()
 
 
@@ -118,21 +120,22 @@ if __name__ == "__main__":
     args = parse_args()
     user_id = args.user_id
     seed = args.seed
+    minority_proportion = args.minprop
 
     # Dataset
-    batch_size = 16
+    batch_size = 512
     dataset_name = f"stanfordnlp/imdb"
     dataset = load_dataset(dataset_name, split="train")
 
     # Reward Model Majority
-    reward_model_name_0 = f"{user_id}/maxmin-imdb-reward-clustering-seed{seed}-group0"
+    reward_model_name_0 = f"{user_id}/maxmin-imdb-reward-clustering-prop{minority_proportion}-seed{seed}-group0"
     reward_model_majority = AutoModelForSequenceClassification.from_pretrained(reward_model_name_0)
     reward_model_majority.eval()
     fc_maj = reward_model_majority.score
     del reward_model_majority
     
     # Reward Model Minority
-    reward_model_name_1 = f"{user_id}/maxmin-imdb-reward-clustering-seed{seed}-group1"
+    reward_model_name_1 = f"{user_id}/maxmin-imdb-reward-clustering-prop{minority_proportion}-seed{seed}-group1"
     reward_model = AutoModelForSequenceClassification.from_pretrained(reward_model_name_1)
     reward_model.eval()
     fc_min = reward_model.score
@@ -155,7 +158,7 @@ if __name__ == "__main__":
 
     # Policy Model
     policy_model_name = "lvwerra/gpt2-imdb"
-    policy_hub_id = f"{user_id}/maxmin-imdb-ppo-clustering-seed{seed}"
+    policy_hub_id = f"{user_id}/maxmin-imdb-ppo-clustering-prop{minority_proportion}-seed{seed}"
     policy_tokenizer = AutoTokenizer.from_pretrained(policy_model_name, padding_side="left")
     policy_tokenizer.pad_token = policy_tokenizer.eos_token
 
@@ -229,4 +232,5 @@ if __name__ == "__main__":
     trainer.train()
 
     # Save the model
+    trainer.model = trainer.accelerator.unwrap_model(trainer.model)
     trainer.push_to_hub(dataset_name=dataset_name)

@@ -2,6 +2,7 @@ import sys, os
 FILE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(FILE_DIR, "../../.."))
 sys.path.insert(0, ROOT)
+os.environ["HF_HOME"] = "/hdd/mb1921/"
 
 import torch
 import argparse
@@ -15,27 +16,6 @@ from trl.trainer.utils import first_true_indices
 from src.models.sr_gpt2.sr_gpt2_modeling import SharedRepGPT2RM
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModelForSequenceClassification
 from src.helper.imdb_utils import pre_processing_imdb
-
-def save_model(self, output_dir: Optional[str] = None, _internal_call: bool = False):
-    backup_model = self.model
-
-    # save only the policy
-    if isinstance(self.model, torch.nn.parallel.DistributedDataParallel):
-        self.model = self.model.module.policy
-    else:
-        self.model = self.model.policy
-    #self.model = self.model.policy  
-
-    if self.is_deepspeed_enabled:
-        backup_deepspeed = self.deepspeed
-        self.deepspeed = self.model
-
-    super().save_model(output_dir, _internal_call)
-
-    self.model = backup_model
-
-    if self.is_deepspeed_enabled:
-        self.deepspeed = backup_deepspeed
 
 def get_sharedrep_reward( model: torch.nn.Module, query_responses: torch.Tensor, pad_token_id: int, context_length: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
@@ -99,6 +79,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Train Pluralistic Reward Model with configurable parameters.")
     parser.add_argument("--user_id", type=str, required=True, help="Hugging Face user ID.")
     parser.add_argument("--seed", type=int, required=True, help="Random seed to use.")
+    parser.add_argument("--minprop", type=float, required=True, help="Minority proportion for clustering.")
     parser.add_argument("--k", type=int, required=True, help="Inner hidden dimension size.")
     return parser.parse_args()
 
@@ -112,16 +93,17 @@ if __name__ == "__main__":
     user_id = args.user_id
     seed = args.seed
     k = args.k
+    minprop = args.minprop
     
 
     # Dataset
-    batch_size = 16
+    batch_size = 512
     dataset_name = f"stanfordnlp/imdb"
     dataset = load_dataset(dataset_name, split="train")
 
 
     # Reward Model
-    reward_model_name = f"{user_id}/sharedrep-imdb-reward-clustering-seed{seed}-k{k}"
+    reward_model_name = f"{user_id}/sharedrep-imdb-reward-clustering-prop{minprop}-seed{seed}-k{k}"
     reward_model = SharedRepGPT2RM.from_pretrained(reward_model_name)
     reward_model.enable_maxmin()
     
@@ -133,7 +115,7 @@ if __name__ == "__main__":
 
     # Policy Tokenizer
     policy_model_name = "lvwerra/gpt2-imdb"
-    policy_hub_id = f"{user_id}/sharedrep-imdb-ppo-clustering-seed{seed}-k{k}"
+    policy_hub_id = f"{user_id}/sharedrep-imdb-ppo-clustering-prop{minprop}-seed{seed}-k{k}"
     policy_tokenizer = AutoTokenizer.from_pretrained(policy_model_name, padding_side="left")
     policy_tokenizer.pad_token = policy_tokenizer.eos_token
 
@@ -191,7 +173,6 @@ if __name__ == "__main__":
 
     m = importlib.import_module(PPOTrainer.__module__)  
     m.get_reward = get_sharedrep_reward
-    m.save_model = save_model
 
     # Train
     trainer = PPOTrainer(
@@ -207,4 +188,5 @@ if __name__ == "__main__":
     trainer.train()
     
     # Save the model
+    trainer.model = trainer.accelerator.unwrap_model(trainer.model)
     trainer.push_to_hub(dataset_name=dataset_name)

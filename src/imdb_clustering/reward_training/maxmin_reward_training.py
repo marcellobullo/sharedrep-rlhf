@@ -18,12 +18,13 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Train Maxmin Reward Model with configurable parameters.")
     parser.add_argument("--user_id", type=str, required=True, help="Hugging Face user ID.")
     parser.add_argument("--seed", type=int, required=True, help="Random seed to use.")
+    parser.add_argument("--minprop", type=float, required=True, help="Proportion of minority group.")
     parser.add_argument("--em_iters", type=int, default=10, help="Number of EM iterations.")
     parser.add_argument("--num_users", type=int, default=30, help="Number of synthetic users.")
     return parser.parse_args()
 
 # Partition the dataset into 'num_users' synthetic users using round robin
-def partition_data_round_robin(dataset, num_users: int, seed: int):
+def partition_data_round_robin(dataset, minority_proportion, num_users: int, seed: int):
     random.seed(seed)
     indices = list(range(len(dataset)))
     random.shuffle(indices)  # Shuffle to avoid ordering bias
@@ -37,7 +38,26 @@ def partition_data_round_robin(dataset, num_users: int, seed: int):
         for i in data_indices:
             user_ids[i] = user_id
 
-    return dataset.add_column("user_id", user_ids)
+    num_group_0 = int(num_users * minority_proportion)
+    all_user_ids = list(range(num_users))
+    random.shuffle(all_user_ids)  # Shuffle to randomize group assignment
+
+    group_0_users = set(all_user_ids[:num_group_0])
+    group_1_users = set(all_user_ids[num_group_0:])
+
+    user_to_group = {
+        user_id: "group_0" if user_id in group_0_users else "group_1"
+        for user_id in all_user_ids
+    }
+
+    # Assign each example to its user's group
+    groups = [user_to_group[uid] for uid in user_ids]
+
+    # Add columns to the dataset
+    dataset = dataset.add_column("user_id", user_ids)
+    dataset = dataset.add_column("group", groups)
+
+    return dataset
 
 def score_dataset(dataset, models, batch_size):
 
@@ -172,11 +192,11 @@ def assign_group_ids(dataset, n_groups, num_users):
 
 def compute_gold_scores(example):
 
-    if example["group_id"] == 0:
+    if example["group"] == "group_0":
         score0 = example["positiveness_0"]
         score1 = example["positiveness_1"]
 
-    if example["group_id"] == 1:
+    if example["group"] == "group_1":
         score0 = (1-example["normalized_length_0"])
         score1 = (1-example["normalized_length_1"])
 
@@ -223,6 +243,7 @@ if __name__ == "__main__":
     args = parse_args()
     user_id = args.user_id
     seed = args.seed
+    minority_proportion = args.minprop
     em_iters = args.em_iters                  
     num_users = args.num_users
     batch_size = 256
@@ -233,7 +254,6 @@ if __name__ == "__main__":
     num_responses = 2
     freeze_backbone = True
     model_name = "lvwerra/gpt2-imdb"
-    model_hub_id = f"{user_id}/maxmin-imdb-reward-clustering-seed{seed}"
 
     # Tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -270,7 +290,7 @@ if __name__ == "__main__":
     
     # Dataset Processing
     dataset = load_dataset(dataset_name, split="train")
-    dataset = partition_data_round_robin(dataset, num_users=num_users, seed=seed)
+    dataset = partition_data_round_robin(dataset, minority_proportion=minority_proportion, num_users=num_users, seed=seed)
     dataset = dataset.map(lambda x: tokenize(x, num_responses=num_responses), desc="Tokenizing", num_proc=32)
     dataset.set_format(type="torch")
 
@@ -280,8 +300,8 @@ if __name__ == "__main__":
         dataset = clustering(dataset, models, batch_size, num_users)
         for group_id in range(n_groups):
 
-            output_dir = f"/hdd/mb1921/imdb_clustering/maxmin-imdb-reward-clustering-seed{seed}-group{group_id}"
-            model_hub_id = f"{user_id}/maxmin-imdb-reward-clustering-seed{seed}-group{group_id}"
+            output_dir = f"/hdd/mb1921/imdb_clustering/maxmin-imdb-reward-clustering-prop{minority_proportion}-seed{seed}-group{group_id}"
+            model_hub_id = f"{user_id}/maxmin-imdb-reward-clustering-prop{minority_proportion}-seed{seed}-group{group_id}"
 
             training_args = RewardConfig(
                 output_dir=output_dir,
