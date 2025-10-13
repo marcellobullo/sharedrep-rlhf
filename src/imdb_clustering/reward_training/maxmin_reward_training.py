@@ -315,6 +315,7 @@ if __name__ == "__main__":
                 run_name=f"EM-training",
                 push_to_hub=False,
                 hub_model_id=model_hub_id,
+                hub_private_repo=True,
             )
             group_dataset = dataset.filter(lambda example: example["group_id"] == group_id)
             if len(group_dataset) == 0:

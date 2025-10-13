@@ -252,7 +252,7 @@ if __name__ == "__main__":
     minority_proportion = args.minprop
     em_iters = args.em_iters                  
     num_users = args.num_users
-    batch_size = 256
+    batch_size = 512
     
     # Reward Params
     n_groups=2
@@ -317,6 +317,7 @@ if __name__ == "__main__":
         run_name=f"EM-training",
         push_to_hub=False,
         hub_model_id=model_hub_id,
+        hub_private_repo=True,
     )
 
     # Learning Rewards with EM Algorithm
