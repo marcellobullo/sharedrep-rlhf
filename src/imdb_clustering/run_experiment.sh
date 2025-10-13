@@ -47,18 +47,18 @@ for SEED in "${SEEDS[@]}"; do
         --num_users "$NUM_USERS"
     done
 
-    # Maxmin
-    echo "========================="
-    echo "         MAXMIN          "
-    echo "========================="
-    echo ""
-    MM_RM_SCRIPT="$PROJECT_DIR/src/imdb_clustering/reward_training/maxmin_reward_training.py"
-    accelerate launch --config_file "$CONFIG_FILE" "$MM_RM_SCRIPT" \
-      --user_id "$USER_ID" \
-      --seed "$SEED" \
-      --minprop "$MINPROP" \
-      --em_iters "$EM_ITERS" \
-      --num_users "$NUM_USERS"
+    # # Maxmin
+    # echo "========================="
+    # echo "         MAXMIN          "
+    # echo "========================="
+    # echo ""
+    # MM_RM_SCRIPT="$PROJECT_DIR/src/imdb_clustering/reward_training/maxmin_reward_training.py"
+    # accelerate launch --config_file "$CONFIG_FILE" "$MM_RM_SCRIPT" \
+    #   --user_id "$USER_ID" \
+    #   --seed "$SEED" \
+    #   --minprop "$MINPROP" \
+    #   --em_iters "$EM_ITERS" \
+    #   --num_users "$NUM_USERS"
 
     ###########################
     #       PPO TRAINING      #
@@ -73,25 +73,25 @@ for SEED in "${SEEDS[@]}"; do
     # echo "Running GOLD PPO training for seed $SEED"
     # accelerate launch --config_file "$CONFIG_FILE" "$GOLD_PPO_SCRIPT" --seed "$SEED" --user_id "$USER_ID"
 
-    # SharedRep
-    echo "========================="
-    echo "        SHAREDREP        "
-    echo "========================="
-    echo ""
-    SR_PPO_SCRIPT="$PROJECT_DIR/src/imdb_clustering/ppo_training/sharedrep_ppo_training.py"
-    for K in "${K_VALUES[@]}"; do
-        echo "Running SHAREDREP PPO training for seed $SEED and K $K"
-        accelerate launch --config_file "$CONFIG_FILE" "$SR_PPO_SCRIPT" --seed "$SEED" --k "$K" --user_id "$USER_ID" --minprop "$MINPROP"
-    done
+    # # SharedRep
+    # echo "========================="
+    # echo "        SHAREDREP        "
+    # echo "========================="
+    # echo ""
+    # SR_PPO_SCRIPT="$PROJECT_DIR/src/imdb_clustering/ppo_training/sharedrep_ppo_training.py"
+    # for K in "${K_VALUES[@]}"; do
+    #     echo "Running SHAREDREP PPO training for seed $SEED and K $K"
+    #     accelerate launch --config_file "$CONFIG_FILE" "$SR_PPO_SCRIPT" --seed "$SEED" --k "$K" --user_id "$USER_ID" --minprop "$MINPROP"
+    # done
 
-    # Maxmin
-    echo "========================="
-    echo "         MAXMIN          "
-    echo "========================="
-    echo ""
-    MM_PPO_SCRIPT="$PROJECT_DIR/src/imdb_clustering/ppo_training/maxmin_ppo_training.py"
-    echo "Running MAXMIN PPO training for seed $SEED"
-    accelerate launch --config_file "$CONFIG_FILE" "$MM_PPO_SCRIPT" --seed "$SEED" --user_id "$USER_ID" --minprop "$MINPROP"
-
+    # # Maxmin
+    # echo "========================="
+    # echo "         MAXMIN          "
+    # echo "========================="
+    # echo ""
+    # MM_PPO_SCRIPT="$PROJECT_DIR/src/imdb_clustering/ppo_training/maxmin_ppo_training.py"
+    # echo "Running MAXMIN PPO training for seed $SEED"
+    # accelerate launch --config_file "$CONFIG_FILE" "$MM_PPO_SCRIPT" --seed "$SEED" --user_id "$USER_ID" --minprop "$MINPROP"
+  done
 done
 echo "All runs done."
