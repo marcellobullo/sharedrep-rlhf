@@ -97,7 +97,7 @@ if __name__ == "__main__":
     
 
     # Dataset
-    batch_size = 512
+    batch_size = 1024
     dataset_name = f"stanfordnlp/imdb"
     dataset = load_dataset(dataset_name, split="train")
 
@@ -152,7 +152,7 @@ if __name__ == "__main__":
         logging_steps=10,
         num_train_epochs=5,
         num_ppo_epochs=3,
-        per_device_train_batch_size=64,
+        per_device_train_batch_size=128,
         gradient_accumulation_steps=1,
         bf16=True,
         learning_rate= 3e-06,

@@ -318,13 +318,12 @@ if __name__ == "__main__":
                 hub_private_repo=True,
             )
             group_dataset = dataset.filter(lambda example: example["group_id"] == group_id)
-            if len(group_dataset) == 0:
+            if len(group_dataset) != 0:
+                # M-step
+                model, trainer = update_reward_model(models[group_id], group_dataset, tokenizer, seed, training_args)
+                models[group_id] = model
+            else:
                 print("\n\n\n\nSkipping group ", group_id, " as no samples assigned to this group.\n\n\n\n")
-                continue
-            # M-step
-            model, trainer = update_reward_model(models[group_id], group_dataset, tokenizer, seed, training_args)
-            models[group_id] = model
-
 
             metrics = trainer.evaluate()
             trainer.log_metrics("eval", metrics)
