@@ -23,13 +23,12 @@ Given an input prompt $\boldsymbol{x}$ and an LLM policy $\pi(\cdot|\boldsymbol{
     - $\tau_2={\rm positive\ sentiment}$
 - We consider $U=2$ synthetic subpopulation, with different numerosity (minority and majority)
 - Each subpopulation $u\in\{1,2\}$ values a convex combination of the traits according to
-    $$
-        {\rm score}_u(\boldsymbol{y}|\boldsymbol{x}) = \sum_{i=1}^T \lambda^u_i \tau_i(\boldsymbol{y}|\boldsymbol{x}), \quad \sum_i^T \lambda^u_i=1,\qquad  u=1,2 
-    $$   
-- Given 2 responses $\boldsymbol{y}_1, \boldsymbol{y}_2$ to a prompt $\boldsymbol{x}$, subpopulation $u$ prefers $\boldsymbol{y}_1$ over $\boldsymbol{y}s_2$ if 
-        $$
-            {\rm score}_u(\boldsymbol{y}_1|\boldsymbol{x}) > {\rm score}_u(\boldsymbol{y}_2|\boldsymbol{x})
-        $$
+
+$${\rm score}_u(\boldsymbol{y}|\boldsymbol{x})= \sum_{i=1}^T \lambda^u_i \tau_i(\boldsymbol{y}|\boldsymbol{x}),\qquad \sum_{i=1}^T \lambda^u_i = 1, \quad  u=1,2$$
+
+- Given 2 responses $\boldsymbol{y}_1, \boldsymbol{y}_2$ to a prompt $\boldsymbol{x}$, subpopulation $u$ prefers $\boldsymbol{y}_1$ over $\boldsymbol{y}_2$ if
+
+$${\rm score}_u (\boldsymbol{y}_1|\boldsymbol{x}) > {\rm score}_u(\boldsymbol{y}_2|\boldsymbol{x})$$
 
 **Our empirical study is guided by two central questions:**
 1. Does SharedRep-RLHF improve *group fairness* over MaxMin-RLHF for tasks with low minority representation, as measured by the average minority score?
